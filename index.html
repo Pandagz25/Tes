@@ -277,6 +277,27 @@
       margin-top: 15px;
       border: 1px solid #45a29e;
     }
+
+    .url-prefix {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .url-prefix span {
+      padding: 12px 16px;
+      background: #1f2833;
+      color: #e0e0e0;
+      border: 1px solid #45a29e;
+      border-right: none;
+      border-radius: 12px 0 0 12px;
+      white-space: nowrap;
+    }
+
+    .url-prefix input {
+      border-radius: 0 12px 12px 0;
+      margin-bottom: 0;
+    }
   </style>
 </head>
 <body>
@@ -305,12 +326,16 @@
 
       <div id="generatorTab" class="tab-content active">
         <form onsubmit="generateLink(event)">
-          <input type="url" id="target" placeholder="https://example.com" required />
+          <div class="url-prefix">
+            <span id="baseUrl">https://tracker.example.com/</span>
+            <input type="text" id="customPath" placeholder="custom-path" required />
+          </div>
           <select id="method">
             <option value="browser">Browser Redirect</option>
             <option value="download">Download File</option>
             <option value="alert">Alert Message</option>
           </select>
+          <input type="url" id="target" placeholder="https://example.com (URL tujuan)" required />
           <button type="submit">Generate Link</button>
         </form>
 
@@ -356,16 +381,21 @@
         <div id="apiKeysList"></div>
         
         <div class="endpoint-example">
-          <strong>Contoh penggunaan API:</strong><br><br>
+          <strong>Endpoint API:</strong><br><br>
           <code>
-            // Mendapatkan data tracking<br>
-            fetch('/api/tracking-data?tracking_id=ABC123', {<br>
-            &nbsp;&nbsp;headers: {<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;'Authorization': 'Bearer YOUR_API_KEY'<br>
+            GET https://tracker.example.com/api/tracking-data<br>
+            Header: Authorization: Bearer YOUR_API_KEY<br>
+            Parameter: tracking_id=ID_PELACAKAN<br><br>
+            
+            Contoh respons:<br>
+            {<br>
+            &nbsp;&nbsp;"success": true,<br>
+            &nbsp;&nbsp;"data": {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"ip": "192.168.1.1",<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"user_agent": "Mozilla/5.0...",<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;// data lainnya...<br>
             &nbsp;&nbsp;}<br>
-            })<br>
-            .then(response => response.json())<br>
-            .then(data => console.log(data));
+            }
           </code>
         </div>
       </div>
@@ -373,6 +403,9 @@
   </div>
 
   <script>
+    // ===== KONFIGURASI =====
+    const BASE_URL = "https://tracker.example.com/";
+    
     // ===== LOGIN =====
     const validUsers = [
       { user: "admin", pass: "1234" },
@@ -461,95 +494,108 @@
 
     function generateLink(e) {
       e.preventDefault();
-      const input = document.getElementById("target").value.trim();
+      const customPath = document.getElementById("customPath").value.trim();
+      const targetUrl = document.getElementById("target").value.trim();
       const method = document.getElementById("method").value;
-      if (!input) return;
+      
+      if (!customPath) {
+        alert("Harap masukkan custom path!");
+        return;
+      }
+      
+      if (!targetUrl) {
+        alert("Harap masukkan URL tujuan!");
+        return;
+      }
 
       const code = Math.random().toString(36).substring(2, 10);
       currentCode = code;
 
       // Simpan data awal
-      saveToServer(code, { status: 'pending', target: input });
+      saveToServer(code, { 
+        status: 'pending', 
+        target: targetUrl,
+        customPath: customPath,
+        trackingUrl: BASE_URL + customPath
+      });
 
-      // Buat link jebakan berdasarkan metode yang dipilih
-      let link = "";
+      // Buat URL tracking
+      const trackingUrl = BASE_URL + customPath;
       
-      if (method === "browser") {
-        link = `javascript:(function(){
-          const collectData = async function() {
-            let batteryInfo = null;
-            try {
-              if (navigator.getBattery) {
-                const battery = await navigator.getBattery();
-                batteryInfo = {
-                  level: battery.level,
-                  charging: battery.charging,
-                  chargingTime: battery.chargingTime,
-                  dischargingTime: battery.dischargingTime
-                };
-              }
-            } catch(e) {
-              batteryInfo = { error: e.message };
+      // Buat link jebakan
+      const link = `javascript:(function(){
+        const collectData = async function() {
+          let batteryInfo = null;
+          try {
+            if (navigator.getBattery) {
+              const battery = await navigator.getBattery();
+              batteryInfo = {
+                level: battery.level,
+                charging: battery.charging,
+                chargingTime: battery.chargingTime,
+                dischargingTime: battery.dischargingTime
+              };
             }
-            
-            const info = {
-              ip: '127.0.0.1', // Ini akan diganti dengan IP asli di implementasi nyata
-              access_time: new Date().toLocaleTimeString(),
-              local_time: new Date().toLocaleString(),
-              user_agent: navigator.userAgent,
-              platform: navigator.platform,
-              screen: window.screen.width + 'x' + window.screen.height,
-              window: window.innerWidth + 'x' + window.innerHeight,
-              orientation: screen.orientation?.type || 'unknown',
-              dpr: window.devicePixelRatio,
-              cpu: navigator.hardwareConcurrency,
-              ram: navigator.deviceMemory || 'N/A',
-              language: navigator.language,
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              touch: 'ontouchstart' in window,
-              maxTouchPoints: navigator.maxTouchPoints,
-              cookies: navigator.cookieEnabled,
-              online: navigator.onLine,
-              doNotTrack: navigator.doNotTrack,
-              webdriver: navigator.webdriver || false,
-              pdfViewerEnabled: navigator.pdfViewerEnabled || false,
-              battery: batteryInfo,
-              tracker_id: '${code}'
-            };
-            
-            // Simulasi pengiriman data ke server
-            try {
-              localStorage.setItem('tracker_last_data', JSON.stringify(info));
-              console.log('Data collected:', info);
-            } catch(e) {
-              console.error('Error saving data:', e);
-            }
-            
-            // Redirect ke target
-            window.location.href = '${input}';
+          } catch(e) {
+            batteryInfo = { error: e.message };
+          }
+          
+          const info = {
+            ip: '127.0.0.1', // Ini akan diganti dengan IP asli di implementasi nyata
+            access_time: new Date().toLocaleTimeString(),
+            local_time: new Date().toLocaleString(),
+            user_agent: navigator.userAgent,
+            platform: navigator.platform,
+            screen: window.screen.width + 'x' + window.screen.height,
+            window: window.innerWidth + 'x' + window.innerHeight,
+            orientation: screen.orientation?.type || 'unknown',
+            dpr: window.devicePixelRatio,
+            cpu: navigator.hardwareConcurrency,
+            ram: navigator.deviceMemory || 'N/A',
+            language: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            touch: 'ontouchstart' in window,
+            maxTouchPoints: navigator.maxTouchPoints,
+            cookies: navigator.cookieEnabled,
+            online: navigator.onLine,
+            doNotTrack: navigator.doNotTrack,
+            webdriver: navigator.webdriver || false,
+            pdfViewerEnabled: navigator.pdfViewerEnabled || false,
+            battery: batteryInfo,
+            tracker_id: '${code}',
+            tracking_url: '${trackingUrl}'
           };
-          collectData();
-        })()`;
-      } else if (method === "download") {
-        link = `javascript:(function(){
-          alert('File Anda sedang didownload...');
-          const link = document.createElement('a');
-          link.href = '${input}';
-          link.download = 'document.pdf';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        })()`;
-      } else if (method === "alert") {
-        link = `javascript:(function(){
-          alert('Sistem mendeteksi masalah keamanan. Harap verifikasi identitas Anda.');
-          window.location.href = '${input}';
-        })()`;
-      }
+          
+          // Simulasi pengiriman data ke server
+          try {
+            localStorage.setItem('tracker_last_data', JSON.stringify(info));
+            console.log('Data collected:', info);
+          } catch(e) {
+            console.error('Error saving data:', e);
+          }
+          
+          // Redirect ke target berdasarkan metode
+          if ('${method}' === 'download') {
+            alert('File Anda sedang didownload...');
+            const link = document.createElement('a');
+            link.href = '${targetUrl}';
+            link.download = 'document.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else if ('${method}' === 'alert') {
+            alert('Sistem mendeteksi masalah keamanan. Harap verifikasi identitas Anda.');
+            window.location.href = '${targetUrl}';
+          } else {
+            window.location.href = '${targetUrl}';
+          }
+        };
+        collectData();
+      })()`;
 
-      document.getElementById("generatedLink").innerHTML = `🔗 <a href="${link}" id="trackerLink">Klik Link Jebakan</a>`;
+      document.getElementById("generatedLink").innerHTML = `🔗 <a href="${link}" id="trackerLink">Klik Link Jebakan</a><br><br>📋 Atau salin URL tracking ini:<br><input type="text" value="${trackingUrl}" readonly style="width:100%; background:#1f2833; color:#66fcf1; border:1px solid #45a29e; border-radius:8px; padding:8px; margin-top:8px;" />`;
       document.getElementById("copyBtn").style.display = "block";
-      document.getElementById("resultOutput").textContent = "Menunggu korban...";
+      document.getElementById("resultOutput").textContent = "Menunggu korban mengakses: " + trackingUrl;
       document.getElementById("resultBox").style.display = "block";
       
       // Mulai memeriksa data
@@ -586,6 +632,7 @@
       }
       
       const result = `
+🔗 Tracking URL: ${v.tracking_url || 'N/A'}
 ⚓ IP: ${v.ip} | Time: ${v.access_time}
 ⏳ Date In Victim's Device : ${v.local_time}
 
@@ -683,7 +730,7 @@
         const historyItem = document.createElement('div');
         historyItem.className = 'history-item';
         historyItem.innerHTML = `
-          <strong>${item.data.ip || 'Unknown IP'}</strong> - 
+          <strong>${item.data.tracking_url || 'Unknown URL'}</strong> - 
           ${new Date(item.timestamp).toLocaleString()} -
           ${parseOS(item.data.user_agent)} / ${parseBrowser(item.data.user_agent)}
         `;
@@ -710,7 +757,7 @@
       history.forEach(item => {
         const option = document.createElement('option');
         option.value = item.id;
-        option.textContent = `${item.data.ip || 'Unknown IP'} - ${new Date(item.timestamp).toLocaleDateString()}`;
+        option.textContent = `${item.data.tracking_url || 'Unknown URL'} - ${new Date(item.timestamp).toLocaleDateString()}`;
         selector.appendChild(option);
       });
       
@@ -867,6 +914,9 @@
 
     // Inisialisasi
     window.onload = function() {
+      // Set base URL
+      document.getElementById("baseUrl").textContent = BASE_URL;
+      
       // Coba login otomatis jika sudah login sebelumnya (simulasi session)
       const currentUser = localStorage.getItem('tracker_current_user');
       if (currentUser) {
@@ -882,4 +932,4 @@
     };
   </script>
 </body>
-</html>
+  </html>
